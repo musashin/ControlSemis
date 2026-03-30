@@ -1,0 +1,19 @@
+// Copy this file to config.h and fill in your values.
+// config.h is excluded from git — never commit your real credentials.
+#pragma once
+
+// ── WiFi ─────────────────────────────────────────────────────────────────────
+const char WIFI_SSID[]     = "YOUR_WIFI_SSID";
+const char WIFI_PASSWORD[] = "YOUR_WIFI_PASSWORD";
+
+// ── MQTT broker ──────────────────────────────────────────────────────────────
+const char MQTT_BROKER[]    = "192.168.x.x";
+const int  MQTT_PORT        = 1883;
+const char MQTT_USER[]      = "YOUR_MQTT_USER";
+const char MQTT_PASSWORD[]  = "YOUR_MQTT_PASSWORD";
+const char MQTT_CLIENT_ID[] = "arduino-semis";
+
+// ── Site ─────────────────────────────────────────────────────────────────────
+// Altitude above sea level in metres (used for SCD30 pressure compensation).
+// Montreal average ≈ 69 m; adjust if your site is higher (e.g. Mont-Royal ≈ 233 m).
+const int ALTITUDE_M = 69;
