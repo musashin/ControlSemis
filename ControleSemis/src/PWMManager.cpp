@@ -1,10 +1,10 @@
 #include "PWMManager.h"
+#include "config.h"
 #include <Arduino.h>
 
 void PWMManager::begin() {
     pinMode(PWM_pin, OUTPUT);
-    setDutyCycle(0);  // Start at 0% (safety)
-
+    setDutyCycle(DEFAULT_PWM_DUTY_CYCLE);  // Start at configured default (safety)
     #ifdef DEBUG
     Serial.println("[PWM] Initialized on pin D9");
     Serial.println("[PWM] Initial duty cycle: 0%");

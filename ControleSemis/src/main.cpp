@@ -6,10 +6,7 @@
 #include "PWMManager.h"
 
 // ── Scheduling intervals ──────────────────────────────────────────────────────
-static const unsigned long SENSOR_INTERVAL_MS       = 5UL  * 60 * 1000;  //  5 min
-static const unsigned long CONTROLLER_INTERVAL_MS   = 10UL * 60 * 1000;  // 10 min
-static const unsigned long DISPLAY_REFRESH_MS       = 30UL * 1000;        // 30 s
-static const unsigned long HEARTBEAT_CHECK_MS       = 30UL * 1000;        // 30 s (connection health check)
+// Defined in config.h (adjust in config.h for testing)
 
 // ── Subsystem instances ───────────────────────────────────────────────────────
 static SensorManager  sensors;
@@ -31,17 +28,72 @@ static unsigned long lastDisplayMs    = 0;
 static unsigned long lastHeartbeatMs  = 0;
 static bool          displayNeedsUpdate = false;
 
+static float lastSensorAirTempC = NAN;
+static unsigned long lastControllerTempWarnMs = 0;
+
 // ── Internal temperature (RA4M1 on Arduino UNO R4 WiFi) ──────────────────────
 // Reads the built-in temperature sensor via direct register access.
 // Formula: T(°C) = (1.394 − V) / 0.00435 + 25, where V = raw × 3.3 / 4096.
 // Note: the raw offset may vary ±5 °C between chips; useful as a relative trend.
+// Cached controller temperature to avoid publishing spurious values during sensor warmup.
+static bool controllerTempIsValid = false;
+static float controllerTempCache = 0.0f;
+
 static float readControllerTemperature() {
-    R_ADC0->ADEXICR_b.TSSA = 1;   // connect temperature sensor to ADC
-    R_ADC0->ADCSR_b.ADST   = 1;   // start single conversion
-    while (R_ADC0->ADCSR_b.ADST); // wait for completion
-    uint16_t raw = R_ADC0->ADTSDR;
-    float v = raw * (3.3f / 4096.0f);
-    return (1.394f - v) / 0.00435f + 25.0f;
+    const float minTempC = -40.0f;
+    const float maxTempC = 120.0f;
+    const int samples = 3;
+    const int sampleDelayMs = 20;
+
+    // Warm up ADC path with one discarded conversion (helps remove first-cycle bias).
+    R_ADC0->ADEXICR_b.TSSA = 1;
+    R_ADC0->ADCSR_b.ADST = 1;
+    while (R_ADC0->ADCSR_b.ADST);
+    delay(sampleDelayMs);
+
+    float sum = 0.0f;
+    int validCount = 0;
+
+    for (int i = 0; i < samples; ++i) {
+        R_ADC0->ADEXICR_b.TSSA = 1;   // connect internal temp sensor to ADC
+        R_ADC0->ADCSR_b.ADST   = 1;   // start single conversion
+        while (R_ADC0->ADCSR_b.ADST); // wait for completion
+
+        uint16_t raw = R_ADC0->ADTSDR;
+        if (raw == 0 || raw >= 4095) {
+            #ifdef DEBUG
+            Serial.print("[Controller] Invalid ADC value: ");
+            Serial.println(raw);
+            #endif
+            delay(sampleDelayMs);
+            continue;
+        }
+
+        float v = raw * (3.3f / 4096.0f);
+        float t = (1.394f - v) / 0.00435f + 25.0f;
+
+        if (t < minTempC || t > maxTempC) {
+            #ifdef DEBUG
+            Serial.print("[Controller] Temp out of limits: ");
+            Serial.println(t, 1);
+            #endif
+            delay(sampleDelayMs);
+            continue;
+        }
+
+        sum += t;
+        validCount++;
+        delay(sampleDelayMs);
+    }
+
+    if (validCount == 0) {
+        #ifdef DEBUG
+        Serial.println("[Controller] No valid temperature sampling");
+        #endif
+        return NAN;
+    }
+
+    return sum / validCount;
 }
 
 // ── Task: check connection health and attempt reconnection ───────────────────
@@ -149,6 +201,7 @@ static void runSensorTask() {
             #endif
         } else {
             newState = ControllerState::HEALTHY;
+            lastSensorAirTempC = data.temperature;
             #ifdef DEBUG
             Serial.print("[Loop:Sensor] ✓ Data valid → HEALTHY");
             Serial.print(" (T=");
@@ -204,13 +257,53 @@ static void runControllerTask() {
     #endif
 
     float controllerTemp = readControllerTemperature();
-    #ifdef DEBUG
-    Serial.print("[Loop:Controller] Controller temp: ");
-    Serial.print(controllerTemp, 1);
-    Serial.println("°C");
-    #endif
+
+    if (isnan(controllerTemp)) {
+        if (!controllerTempIsValid) {
+            // Fallback to last air temperature if available; avoids broadcasting 0.0 as control temperature.
+            if (!isnan(lastSensorAirTempC)) {
+                controllerTemp = lastSensorAirTempC;
+                controllerTempIsValid = true;
+                controllerTempCache = controllerTemp;
+                #ifdef DEBUG
+                Serial.print("[Loop:Controller] Using air-temp fallback for controller temp: ");
+                Serial.print(controllerTemp, 1);
+                Serial.println("°C");
+                #endif
+            } else {
+                unsigned long now = millis();
+                if (now - lastControllerTempWarnMs >= 15000UL) {
+                    #ifdef DEBUG
+                    Serial.println("[Loop:Controller] No valid controller temperature yet; skipping publish");
+                    #endif
+                    lastControllerTempWarnMs = now;
+                }
+                return;
+            }
+        } else {
+            controllerTemp = controllerTempCache;
+            unsigned long now = millis();
+            if (now - lastControllerTempWarnMs >= 30000UL) {
+                #ifdef DEBUG
+                Serial.print("[Loop:Controller] Using cached controller temp: ");
+                Serial.print(controllerTemp, 1);
+                Serial.println("°C");
+                #endif
+                lastControllerTempWarnMs = now;
+            }
+        }
+    } else {
+        controllerTempIsValid = true;
+        controllerTempCache = controllerTemp;
+        #ifdef DEBUG
+        Serial.print("[Loop:Controller] Controller temp: ");
+        Serial.print(controllerTemp, 1);
+        Serial.println("°C");
+        #endif
+    }
 
     mqtt.publishControllerTemp(controllerTemp);
+
 
     const char* statusStr = (state == ControllerState::HEALTHY)
                             ? "OK"

@@ -72,6 +72,24 @@ bool MQTTManager::connectWiFi() {
     Serial.print("[WiFi] Connected! IP: ");
     Serial.println(WiFi.localIP());
     #endif
+
+    // Ensure we have a valid datapoint before MQTT connect.
+    unsigned long ipStart = millis();
+    while (WiFi.localIP() == IPAddress(0,0,0,0)) {
+        if (millis() - ipStart > 10000UL) {
+            #ifdef DEBUG
+            Serial.println("[WiFi] Waiting for valid IP timed out");
+            #endif
+            return false;
+        }
+        delay(200);
+    }
+
+    #ifdef DEBUG
+    Serial.print("[WiFi] Final IP: ");
+    Serial.println(WiFi.localIP());
+    #endif
+
     return true;
 }
 
@@ -93,18 +111,39 @@ bool MQTTManager::connectMQTT() {
     _mqttClient.setId(_clientId);
     _mqttClient.setUsernamePassword(_user, _mqttPass);
 
-    bool success = _mqttClient.connect(_broker, _port);
-    if (success) {
+    const int maxAttempts = 3;
+    const unsigned long retryDelayMs = 1000UL;
+    bool success = false;
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        success = _mqttClient.connect(_broker, _port);
+        if (success) {
+            #ifdef DEBUG
+            Serial.print("[MQTT] Connected successfully on attempt ");
+            Serial.println(attempt);
+            #endif
+            subscribeToTopics();
+            return true;
+        }
+
         #ifdef DEBUG
-        Serial.println("[MQTT] Connected successfully!");
+        Serial.print("[MQTT] Connection failed attempt ");
+        Serial.print(attempt);
+        Serial.print("/"
+                     );
+        Serial.print(maxAttempts);
+        Serial.println(" (check broker address/port/credentials)");
         #endif
-        subscribeToTopics();
-    } else {
-        #ifdef DEBUG
-        Serial.println("[MQTT] Connection failed (check broker address/port/credentials)");
-        #endif
+
+        if (attempt < maxAttempts) {
+            delay(retryDelayMs);
+        }
     }
-    return success;
+
+    #ifdef DEBUG
+    Serial.println("[MQTT] All connection attempts failed");
+    #endif
+    return false;
 }
 
 void MQTTManager::subscribeToTopics() {

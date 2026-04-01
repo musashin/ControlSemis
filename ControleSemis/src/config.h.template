@@ -17,3 +17,10 @@ const char MQTT_CLIENT_ID[] = "arduino-semis";
 // Altitude above sea level in metres (used for SCD30 pressure compensation).
 // Montreal average ≈ 69 m; adjust if your site is higher (e.g. Mont-Royal ≈ 233 m).
 const int ALTITUDE_M = 69;
+
+// ── Task timing (ms) ───────────────────────────────────────────────────────────
+// Adjust these values for testing and behavior tuning.
+const unsigned long SENSOR_INTERVAL_MS     = 15UL * 1000;        // 15 s
+const unsigned long CONTROLLER_INTERVAL_MS = 10UL * 1000;        // 10 s
+const unsigned long DISPLAY_REFRESH_MS     = 30UL * 1000;        // 30 s
+const unsigned long HEARTBEAT_CHECK_MS     = 30UL * 1000;        // 30 s (connection health check)
