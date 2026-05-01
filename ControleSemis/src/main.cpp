@@ -342,7 +342,9 @@ void setup() {
     #endif
     pwm.begin();
     #ifdef DEBUG
-    Serial.println("✓ PWM initialized (pin D9, duty cycle 0%)");
+    Serial.print("✓ PWM initialized (pin D9, duty cycle ");
+    Serial.print(pwm.getDutyCycle());
+    Serial.println("%)");
     #endif
 
     // ─ Sensor ─────────────────────────────────────────────────────────────────

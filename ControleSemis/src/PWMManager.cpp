@@ -7,7 +7,9 @@ void PWMManager::begin() {
     setDutyCycle(DEFAULT_PWM_DUTY_CYCLE);  // Start at configured default (safety)
     #ifdef DEBUG
     Serial.println("[PWM] Initialized on pin D9");
-    Serial.println("[PWM] Initial duty cycle: 0%");
+    Serial.print("[PWM] Initial duty cycle: ");
+    Serial.print(_dutyCycle);
+    Serial.println("%");
     #endif
 }
 
