@@ -45,8 +45,15 @@ static float readControllerTemperature() {
     const int samples = 3;
     const int sampleDelayMs = 20;
 
+    // Put ADC in a known state: single-scan mode, no regular channels, temp sensor only.
+    // Without this, prior analogRead() calls or framework init can leave the ADC in a
+    // mode where ADTSDR returns garbage.
+    R_ADC0->ADCSR_b.ADCS  = 0;   // single-scan mode
+    R_ADC0->ADANSA[0]      = 0;   // clear regular channel group 0
+    R_ADC0->ADANSA[1]      = 0;   // clear regular channel group 1
+    R_ADC0->ADEXICR_b.TSSA = 1;  // connect internal temp sensor
+
     // Warm up ADC path with one discarded conversion (helps remove first-cycle bias).
-    R_ADC0->ADEXICR_b.TSSA = 1;
     R_ADC0->ADCSR_b.ADST = 1;
     while (R_ADC0->ADCSR_b.ADST);
     delay(sampleDelayMs);
